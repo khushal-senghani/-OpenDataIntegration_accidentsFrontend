@@ -106,60 +106,6 @@ src/
 └── App.jsx                # Route definitions & layout wrapper
 ```
 
----
-
-## ⚠️ Required Backend Changes
-
-Two small, additive changes to `accident-api` are required for this frontend to fully function. Neither breaks anything that already exists.
-
-### 1. `latest_year` field on `/aggregates/earliest-year`
-
-Needed by the Dashboard's "Data span" KPI. Open `accident-api/src/routes/aggregates.js` and replace the `/earliest-year` handler with this version (adds `MAX(year)` alongside the existing `MIN(year)`):
-
-```javascript
-router.get('/earliest-year', asyncHandler(async (req, res) => {
-  if (req.query.state) {
-    const ags = resolveStateAgs(req.query.state);
-    if (!ags) throw new ApiError(400, `Unknown state: ${req.query.state}`);
-    const { rows } = await pool.query(
-      `SELECT MIN(year) AS earliest_year, MAX(year) AS latest_year FROM accidents WHERE state_code = $1`,
-      [parseInt(ags, 10)]
-    );
-    const stateRow = await pool.query('SELECT name FROM regions WHERE ags = $1', [ags]);
-    return res.json({
-      scope: stateRow.rows[0]?.name ?? ags,
-      earliest_year: rows[0].earliest_year,
-      latest_year: rows[0].latest_year,
-    });
-  }
-
-  const { rows } = await pool.query('SELECT MIN(year) AS earliest_year, MAX(year) AS latest_year FROM accidents');
-  res.json({
-    scope: 'Deutschland (all loaded data)',
-    earliest_year: rows[0].earliest_year,
-    latest_year: rows[0].latest_year,
-  });
-}));
-```
-
-### 2. `GET /metadata/test-questions`
-
-Needed by the new **Test Questions** tab. This single endpoint computes the answer to every mandatory, cross-source, and bonus examiner question server-side and returns them all in one response. Add it to `accident-api/src/routes/metadata.js`, right after the existing `/indicators` handler.
-
-Each item in the response has the following shape:
-```json
-{
-  "id": "saxony-2023",
-  "question": "How many accidents involving personal injury occurred in Saxony in 2023?",
-  "sources": ["Unfallatlas"],
-  "answer": 12513,
-  "summary": "12,513 accidents involving personal injury occurred in Saxony in 2023. ..."
-}
-```
-*`answer` is a scalar for simple counts, an object for single chained lookups, or an array of objects for ranked/listed results. The `QuestionCard` component on the frontend adapts its detail view to whichever shape comes back.*
-
----
-
 ## 🎨 Design Notes
 
 * **No state management library:** Each page owns its own filter state and fetches via a small `useAsync` hook (`src/hooks/useAsync.js`). The app is small enough that Redux or Zustand would be pure overhead.
